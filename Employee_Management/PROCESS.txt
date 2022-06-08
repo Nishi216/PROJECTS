@@ -1,0 +1,286 @@
+STARTING THE DJANGO PROJECT -
+    -- Start virtual environment
+    -- Start django project (django has to be installed) -
+            django-admin startproject DjangoAPI
+
+DATABASE CONFIGS -
+    -- Either keep the database to sqlite or change it to your DB. I have changed to MySQL -
+        Go to settings.py of the project and change the DATABASES to -
+            DATABASES = {  
+                'default': {  
+                    'ENGINE': 'django.db.backends.mysql',  
+                    'NAME': 'django',  
+                    'USER': 'root',  
+                    'PASSWORD': '',  
+                    'HOST': '127.0.0.1',  
+                    'PORT': '3306',  
+                    'OPTIONS': {  
+                        'init_command': "SET sql_mode='STRICT_TRANS_TABLES'"  
+                    }  
+                }  
+            }
+
+INSTALL REST FRAMEWORK FOR API -    pip install django-rest-framework
+
+AUTHORIZATION FOR LIMITED ACCESS -
+    -- In order to authorize only specific domains to access your data that is to consume your API endpoints, django-
+        cors-headers is needed, so install the package at first -
+            pip install django-cors-headers
+    -- Then go the settings.py to register the cors module in the INSTALLED_APPS - 'corsheaders'
+    -- Then in the settings.py in MIDDLEWARE, add - 'corsheaders.middleware.CorsMiddleWare'
+    -- Then create a variable just above the MIDDLEWARE lets say, to allow the domains that you would want to give access to.
+        In our case, we are allowing all the domains, for that do -
+            CORS_ORIGIN_ALLOW_ALL = True
+        For specifying specific domains do the following -
+            CORS_ORIGIN_WHITELIST = ("http://google.com") (an example)
+            So this will only allow google to get you API
+
+
+CREATING APPLICATION IN THE PROJECT -
+    -- Do the following on the terminal -
+            python manage.py startapp EmployeeApp
+    -- Then register the app in the settings.py under INSTALLED_APPS -
+            'EmployeeApp.apps.EmployeeappConfig'
+                The name EmployeeappConfig is what you will get in the apps.py of the application EmployeeApp
+    -- In the INSTALLED_APPS of settings, add - 'rest_framework'
+
+
+
+
+NOW CREATE MODELS -
+    -- In the models.py of the app, do the following - (making a model is making tables)    
+            from django.db import models
+
+            class Departments(models.Model):
+                DepartmentId = models.AutoField(primary_key=True)
+                DepartmentName = models.CharField(max_length=200)
+
+            class Employees(models.Model):
+                EmployeeId = models.AutoField(primary_key=True)
+                EmployeeName = models.CharField(max_length=100)
+                Department = models.CharField(max_length=200)
+                DateOfJoining = models.DateField()
+                PhotoFileName = models.CharField(max_length=100)
+
+    -- Now to create the model in the database we configured, do the following -
+            python manage.py makemigrations EmployeeApp
+            python manage.py migrate EmployeeApp    (for commiting the changes in the database)
+    
+    -- You can check the tables being created in the database.
+
+
+
+MAKING SERIALIZERS FOR MODELS -
+    -- Serializers help in converting the complex types of model instances to native python data types that can be rendered easily
+        json or xml or other types. It also helps in deserialization which is nothing but helps in conerting the parsed data
+        back to complex types.
+    -- Create a new file with name serializers.py and do the following -
+            from rest_framework import serializers
+            from EmployeeApp.models import Departments, Employees
+
+            class DepartmentSerializer(serializers.ModelSerializer):
+                class Meta:
+                    model = Departments
+                    fields = (
+                        'DepartmentId',
+                        'DepartmentName'
+                    )
+
+            class EmployeesSerializer(serializers.ModelSerializer):
+                class Meta:
+                    model = Employees
+                    fields = (
+                        'EmployeeId',
+                        'EmployeeName',
+                        'Department',
+                        'DateOfJoining',
+                        'PhotoFileName'
+                    )
+
+
+CREATING API -
+    -- In the views.py of the app, do the following -
+            from django.shortcuts import render
+
+            from django.views.decorators.csrf import csrf_exempt        #this is to allow the other domains to use API methods
+            from rest_framework.parser import JSONParser
+            from django.http.response import JsonResponse
+
+            from EmployeeApp.models import Departments, Employees
+            from EmployeeApp.serializers import DepartmentSerializer, EmployeesSerializer
+
+
+            #API FOR DEPARTMENT
+            @csrf_exempt
+            def departmentApi(request, id = 0):        #the method uses an optional id generally used for deleting
+                if request.method=='GET':           #this will simply fetch the data from the table in JSON format
+                    departments = Departments.objects.all()     #this is getting all data from Departments table
+                    departments_serializer = DepartmentSerializer(departments, many = True)  #this is converting the data into JSON format
+                    return JsonResponse(departments_serializer.data, safe = False)
+
+                elif request.method == 'POST':          #for inserting data into the table
+                    department_data = JSONParser().parse(request)       #parsing the JSON data first before serializing
+                    departments_serializer = DepartmentSerializer(data = department_data)
+                    if departments_serializer.is_valid():       #to check if model is valid, then save to database
+                        departments_serializer.save()
+                        return JsonResponse("Added Successfully!", safe= False)
+                    return JsonResponse("Failed to Add!", safe=False)
+                
+                elif request.method == 'PUT':
+                    department_data = JSONParser().parse(request)
+                    department = Departments.objects.get(DepartmentId = department_data['DepartmentId'])
+                    departments_serializer = DepartmentSerializer(department, data = department_data)
+                    if departments_serializer.is_valid():       #to check if model is valid, then save to database
+                        departments_serializer.save()
+                        return JsonResponse("Updated Successfully!", safe= False)
+                    return JsonResponse("Failed to Update!", safe=False)
+
+                elif request.method == 'DELETE':
+                    department = Departments.objects.get(DepartmentId = id)
+                    department.delete()
+                    return JsonResponse("Deleted Successfully!", safe = False)
+
+
+NOW CREATE URLS FOR THE API -
+    -- Create a urls.py file for the app and do the following in it -
+            from django.urls import re_path
+            from EmployeeApp import views
+
+            urlpatterns = [
+                re_path(r'^department/$', views.departmentApi),
+                re_path(r'^department/([0-9]+)$', views.departmentApi)
+            ]
+    -- Then in the urls.py file of the project do the following -
+            from django.contrib import admin
+            from django.urls import path
+
+            from django.urls import re_path, include
+
+            urlpatterns = [
+                path('admin/', admin.site.urls),
+                re_path(r'^',include('EmployeeApp.urls'))
+            ]
+    (IF YOU ARE GETTING ANY ERROR THEN REMOVE THE CORS HEADER FILE FROM THE PROJECT AS IT MAY BE DEPRICATED FOR SOME)
+(DO SIMILAR THINGS IN MODEL VIEW AND URL FOR EVERY CLASS YOU HAVE)
+
+
+FOR ADDING IMAGES -
+    -- Create a folder called media in the project
+    -- Do some additions in the settings.py file of the project, do the following -
+            import os
+
+            # Build paths inside the project like this: BASE_DIR / 'subdir'.
+            BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
+            MEDIA_URL = '/media'
+            MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+    -- Then go to views.py and do the following -
+            from django.core.files.storage import default_storage
+            @csrf_exempt
+            def saveFile(request):
+                file = request.FILES['myFile']
+                file_name = default_storage.save(file.name, file)
+                return JsonResponse(file_name, safe=False)
+    -- Then go to app url to save a static path in order to access static files through url -
+            from django.urls import re_path
+            from EmployeeApp import views
+
+            from django.conf.urls.static import static
+            from django.conf import settings
+
+            urlpatterns = [
+                re_path(r'^department/$', views.departmentApi),
+                re_path(r'^department/([0-9]+)$', views.departmentApi),
+                re_path(r'^employee/$', views.employeeApi),
+                re_path(r'^employee/([0-9]+)$', views.employeeApi),
+                re_path(r'^employee/savefile/$', views.saveFile),
+            ] + static(settings.MEDIA_URL, document_root = settings.MEDIA_ROOT)
+
+AND THE BACKEND IS DONE.
+MOVING TO FRONT END NOW.
+
+
+
+FRONT END -
+    You need node and IDE.
+    -- Create a react application by - npx create-react-app my-app(name of the app)
+            A folder will start to initialize with all the necessities of react application
+    -- package.json file contains the details of all the packages used by this project.
+    -- node_modules folder is where all the packages are installed
+    -- index.html file under public folder is the final file that gets rendered.
+    -- In the index.js under src, the index file is rendered using an id and the component used in it is in App.js under src
+    -- In the index.js under src, the index file is rendered using an id and the component used in it is in App.js under src
+
+INSTALL REACT BOOTSTRAP -
+    -- npm install react-bootstarp bootstrap
+
+    -- Copy the folloeing code and paste at index.html under public just above the end of head tag-
+            <link
+                rel="stylesheet"
+                href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+                integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3"
+                crossorigin="anonymous"
+            />
+
+Now in App.js of the sec folder, do the following -
+    import logo from './logo.svg';
+    import './App.css';
+
+    function App(){
+        return (
+            <div className = "container">
+                <h3 className = "m-3 d-flex justify-content-center"> 
+                    React JS Tutorial
+                </h3>
+            </div>
+        );
+    }
+
+
+-- Now create a file called Home.js under src and do the following -
+    import React, {Component} from 'react';
+    export class Home extends Component{
+        render(){
+            return(
+                <div className="mt-5 d-flex justify-content-left">
+                    Home Page
+                </div>
+            )
+        }
+    }
+
+-- Now create a department component that is Department.js and  do -
+    import React, {Component} from 'react';
+    export class Department extends Component{
+        render(){
+            return(
+                <div className="mt-5 d-flex justify-content-left">
+                    Department Page
+                </div>
+            )
+        }
+    }
+
+-- Now create employee component that is Employee.js and  do -
+    import React, {Component} from 'react';
+    export class Employee extends Component{
+        render(){
+            return(
+                <div className="mt-5 d-flex justify-content-left">
+                    Employee Page
+                </div>
+            )
+        }
+    }
+
+-- Now create a navigation component that is Navigation.js and  do -
+    import React, {Component} from 'react';
+    import {NavLink} from 'react-router-dom';
+    import {Navbar, Nav} from 'react-bootstrap';
+
+    export class Navigation extends Component{
+        render(){
+            return(
+                <Navbar bg = "dark" expand = "lg"> </Navbar>
+            )
+        }
+    }
